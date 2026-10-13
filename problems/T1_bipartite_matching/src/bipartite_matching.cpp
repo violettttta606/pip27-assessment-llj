@@ -2,7 +2,7 @@
 
 #include <memory>
 #include <vector>
-
+#include <functional>
 // 这是可编译的起始模板。请在此处实现带权二分图最大权匹配算法。
 struct BipartiteMatcher::Impl {
     Impl(std::uint32_t left_count, std::uint32_t right_count, const std::vector<Edge>& edges)
@@ -37,5 +37,39 @@ std::vector<std::int32_t> BipartiteMatcher::maximumWeightMatching() const {
 }
     std::vector<std::int32_t> answer(impl_->left_count, -1);
     answer[best_left] = best_right;
-    return std::vector<std::int32_t>(impl_->left_count, -1);
+    //current
+    std::vector<std::int32_t> current_answer(impl_->left_count, -1);
+    std::vector<bool> used_right(impl_->right_count, false);
+    std::int64_t current_weight = 0;
+    std::uint32_t selected_count = 0;
+    std::function<void(std::uint32_t)> dfs;
+//搜
+dfs = [&](std::uint32_t i) {
+    if (i == impl_->left_count) {
+    if (selected_count > 0 && current_weight > best_weight) {
+        best_weight = current_weight;
+        answer = current_answer;
+    }
+
+    return;
+}
+    dfs(i + 1);
+    for (const Edge& edge : impl_->edges) {
+    if (edge.left == i && !used_right[edge.right]) {
+        current_answer[i] = edge.right;
+        used_right[edge.right] = true;
+        current_weight += edge.weight;
+        selected_count += 1;
+        // 
+        dfs(i + 1);
+        //
+        current_answer[i] = -1;
+        used_right[edge.right] = false;
+        current_weight -= edge.weight;
+        selected_count -= 1;
+    }
+}
+};
+    dfs(0);
+    return answer;
 }
