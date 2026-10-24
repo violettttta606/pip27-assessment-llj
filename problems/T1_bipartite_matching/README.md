@@ -162,7 +162,13 @@ cmake -S problems/T1_bipartite_matching \
       -B /tmp/pip27-t1-build \
       -DCMAKE_BUILD_TYPE=Release
 cmake --build /tmp/pip27-t1-build
+ctest --test-dir /tmp/pip27-t1-build --output-on-failure
 ~~~
 
-模板中的占位实现只返回全 <code>-1</code>，作用是展示接口和保证工程可以编译，
-只能处理无边输入，不能通过任何有边的正式测试。
+当前实现使用带虚拟空列的矩形匈牙利算法；无边时返回全 <code>-1</code>，
+所有边权非正时选择最大权的单条边，以满足非空约束。
+
+本地 CTest 使用独立的子集动态规划核对匹配合法性和最优总权重，覆盖左右点数
+不等、负权、零权和 64 位总分，并穷举小图和运行固定种子的随机图。
+测试代码位于 <code>tests/</code>，不参与正式测评的 <code>src/</code> 编译。
+可通过 <code>-DBUILD_TESTING=OFF</code> 仅构建算法库。

@@ -10,3 +10,10 @@ add_library(t1_bipartite_matching STATIC ${T1_SOURCES})
 target_compile_features(t1_bipartite_matching PUBLIC cxx_std_17)
 target_include_directories(t1_bipartite_matching PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/include")
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(t1_matching_test tests/matching_test.cpp)
+    target_link_libraries(t1_matching_test PRIVATE t1_bipartite_matching)
+    add_test(NAME t1_matching_correctness COMMAND t1_matching_test)
+endif()
