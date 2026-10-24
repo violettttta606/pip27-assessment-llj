@@ -16,4 +16,7 @@ if(BUILD_TESTING)
     add_executable(t1_matching_test tests/matching_test.cpp)
     target_link_libraries(t1_matching_test PRIVATE t1_bipartite_matching)
     add_test(NAME t1_matching_correctness COMMAND t1_matching_test)
+    add_executable(t1_matching_benchmark EXCLUDE_FROM_ALL
+        tests/matching_benchmark.cpp)
+    target_link_libraries(t1_matching_benchmark PRIVATE t1_bipartite_matching)
 endif()

@@ -165,10 +165,29 @@ cmake --build /tmp/pip27-t1-build
 ctest --test-dir /tmp/pip27-t1-build --output-on-failure
 ~~~
 
-当前实现使用带虚拟空列的矩形匈牙利算法；无边时返回全 <code>-1</code>，
-所有边权非正时选择最大权的单条边，以满足非空约束。
+当前实现按正权边密度选择算法：稠密图使用带虚拟空列的矩形匈牙利算法，
+稀疏图使用势函数与堆优化 Dijkstra 的逐次最短增广路。
+无边时返回全 <code>-1</code>；所有边权非正时选择最大权的单条边，以满足非空约束。
+
+稀疏分支只保留正权边，因为有正权边时最优解不需要负权或零权边；每次只沿
+有剩余容量的边搜索。当增广不再增加总权重时停止，不强求最大匹配数量。
+它不构造 <code>L × R</code> 矩阵，也不为未匹配点添加虚拟列，空间为
+<code>O(E + L + R)</code>，时间为
+<code>O(k(E + L + R) log(L + R))</code>，其中 <code>k ≤ min(L,R)</code>。
+算法分派仅依据输入规模与密度，不依赖测试点编号。
 
 本地 CTest 使用独立的子集动态规划核对匹配合法性和最优总权重，覆盖左右点数
 不等、负权、零权和 64 位总分，并穷举小图和运行固定种子的随机图。
 测试代码位于 <code>tests/</code>，不参与正式测评的 <code>src/</code> 编译。
 可通过 <code>-DBUILD_TESTING=OFF</code> 仅构建算法库。
+
+大图压力程序需显式构建：
+
+~~~bash
+cmake --build /tmp/pip27-t1-build --target t1_matching_benchmark
+taskset -c 0 /tmp/pip27-t1-build/t1_matching_benchmark
+~~~
+
+<code>taskset</code> 的核编号应选择当前环境允许使用的 CPU。
+数据生成、已知最优值的依据及单核新旧对比见
+[性能记录](tests/PERFORMANCE.md)。合成图验证不代替正式测评。

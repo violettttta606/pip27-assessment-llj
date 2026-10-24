@@ -93,6 +93,13 @@ void directed() {
     check("negative edge remains unused", 2, 3, {{0, 0, 8}, {1, 1, -7}}, 8);
     check("weight before cardinality", 2, 2, {{0, 0, 100}, {0, 1, 1}, {1, 0, 1}}, 100);
     check("augmenting reassignment", 2, 2, {{0, 0, 8}, {0, 1, 5}, {1, 0, 5}}, 10);
+    check("sparse reassignment with isolates", 20, 30,
+          {{0, 0, 8}, {0, 1, 5}, {1, 0, 5}}, 10);
+    check("sparse weight before cardinality", 30, 20,
+          {{0, 0, 100}, {0, 1, 1}, {1, 0, 1}}, 100);
+    check("sparse negative edges", 20, 30,
+          {{0, 0, 1000000000}, {1, 1, -1000000000}, {19, 29, 0}},
+          1000000000);
     check("64 bit total", 3, 4,
           {{0, 0, 1000000000}, {1, 1, 1000000000}, {2, 3, 1000000000}},
           Score{3000000000});
@@ -153,8 +160,16 @@ void random_cases(std::uint32_t count) {
             }
         }
         std::shuffle(edges.begin(), edges.end(), random);
-        check("random " + std::to_string(trial), left, right, edges,
-              optimum(left, right, edges));
+        const Score expected = optimum(left, right, edges);
+        check("random " + std::to_string(trial), left, right, edges, expected);
+        if (trial < 2000) {
+            // Isolated vertices cannot change the optimum, but should not
+            // force a dense algorithm or break either partition orientation.
+            check("padded random " + std::to_string(trial),
+                  left + 20, right + 30, edges, expected);
+            check("transposed padding " + std::to_string(trial),
+                  left + 30, right + 20, edges, expected);
+        }
     }
     std::cout << "PASS random: " << case_count - start << " cases\n";
 }

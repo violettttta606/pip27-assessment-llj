@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <queue>
+#include <utility>
 #include <vector>
 
 using namespace std;
@@ -19,6 +21,167 @@ struct BipartiteMatcher::Impl {
     uint32_t left_count;
     uint32_t right_count;
     vector<Edge> edges;
+
+    struct FlowEdge {
+        uint32_t to;
+        uint32_t reverse;
+        int64_t capacity;
+        int64_t cost;
+    };
+
+    using FlowGraph = vector<vector<FlowEdge>>;
+
+    static void addFlowEdge(FlowGraph& graph, uint32_t from, uint32_t to,
+                            int64_t capacity, int64_t cost) {
+        const uint32_t forward_index =
+            static_cast<uint32_t>(graph[to].size());
+        const uint32_t reverse_index =
+            static_cast<uint32_t>(graph[from].size());
+        graph[from].push_back(
+            {to, forward_index, capacity, cost});
+        graph[to].push_back(
+            {from, reverse_index, 0, -cost});
+    }
+
+    vector<int32_t> solveSparse(
+        const vector<Edge>& positive_edges) const {
+        vector<int32_t> answer(left_count, -1);
+
+        // Put the smaller partition on the source side. This bounds the
+        // number of augmentations by min(left_count, right_count).
+        const bool transpose = left_count > right_count;
+        const uint32_t source_count = transpose ? right_count : left_count;
+        const uint32_t target_count = transpose ? left_count : right_count;
+        const uint32_t source = 0;
+        const uint32_t source_base = 1;
+        const uint32_t target_base = source_base + source_count;
+        const uint32_t sink = target_base + target_count;
+        const uint32_t node_count = sink + 1;
+        FlowGraph graph(node_count);
+
+        for (uint32_t source_vertex = 0;
+             source_vertex < source_count; ++source_vertex) {
+            addFlowEdge(graph, source, source_base + source_vertex,
+                        1, 0);
+        }
+        for (uint32_t target_vertex = 0;
+             target_vertex < target_count; ++target_vertex) {
+            addFlowEdge(graph, target_base + target_vertex, sink, 1, 0);
+        }
+
+        struct MatchingEdge {
+            uint32_t left;
+            uint32_t right;
+            uint32_t from;
+            uint32_t index;
+        };
+        vector<MatchingEdge> matching_edges;
+        matching_edges.reserve(positive_edges.size());
+        vector<int64_t> potential(node_count, 0);
+
+        // Initial shortest-path potentials make every residual reduced cost
+        // nonnegative, despite negative costs on positive-weight edges.
+        for (const Edge& edge : positive_edges) {
+            const uint32_t source_vertex =
+                transpose ? edge.right : edge.left;
+            const uint32_t target_vertex =
+                transpose ? edge.left : edge.right;
+            potential[target_base + target_vertex] = std::min(
+                potential[target_base + target_vertex], -edge.weight);
+            const uint32_t from = source_base + source_vertex;
+            const uint32_t index = static_cast<uint32_t>(graph[from].size());
+            addFlowEdge(graph, from, target_base + target_vertex,
+                        1, -edge.weight);
+            matching_edges.push_back(
+                {edge.left, edge.right, from, index});
+        }
+        for (uint32_t target_vertex = 0;
+             target_vertex < target_count; ++target_vertex) {
+            potential[sink] = std::min(
+                potential[sink], potential[target_base + target_vertex]);
+        }
+
+        const int64_t infinity = numeric_limits<int64_t>::max() / 4;
+        using QueueItem = pair<int64_t, uint32_t>;
+        struct QueueCompare {
+            bool operator()(const QueueItem& first,
+                            const QueueItem& second) const {
+                if (first.first != second.first) {
+                    return first.first > second.first;
+                }
+                // The sink has the largest index: settle it first on ties.
+                return first.second < second.second;
+            }
+        };
+        priority_queue<QueueItem, vector<QueueItem>, QueueCompare> queue;
+        vector<int64_t> distance(node_count);
+        vector<uint32_t> previous_node(node_count);
+        vector<uint32_t> previous_edge(node_count);
+
+        while (true) {
+            fill(distance.begin(), distance.end(), infinity);
+            distance[source] = 0;
+            queue = {};
+            queue.emplace(0, source);
+            while (!queue.empty()) {
+                const auto [current_distance, node] = queue.top();
+                queue.pop();
+                if (current_distance != distance[node]) {
+                    continue;
+                }
+                if (node == sink) {
+                    break;
+                }
+                for (uint32_t index = 0;
+                     index < graph[node].size(); ++index) {
+                    const FlowEdge& edge = graph[node][index];
+                    if (edge.capacity == 0) {
+                        continue;
+                    }
+                    const int64_t reduced_cost =
+                        edge.cost + potential[node] - potential[edge.to];
+                    const int64_t next_distance =
+                        current_distance + reduced_cost;
+                    if (next_distance < distance[edge.to]) {
+                        distance[edge.to] = next_distance;
+                        previous_node[edge.to] = node;
+                        previous_edge[edge.to] = index;
+                        queue.emplace(next_distance, edge.to);
+                    }
+                }
+            }
+            if (distance[sink] == infinity) {
+                break;
+            }
+            const int64_t marginal_cost =
+                distance[sink] + potential[sink] - potential[source];
+            if (marginal_cost >= 0) {
+                break;
+            }
+            // Dijkstra stops at the sink. Capping all other distances at
+            // that settled distance keeps every residual reduced cost
+            // nonnegative, including edges from unvisited vertices.
+            for (uint32_t node = 0; node < node_count; ++node) {
+                potential[node] += std::min(distance[node], distance[sink]);
+            }
+            uint32_t node = sink;
+            while (node != source) {
+                FlowEdge& edge =
+                    graph[previous_node[node]][previous_edge[node]];
+                --edge.capacity;
+                ++graph[node][edge.reverse].capacity;
+                node = previous_node[node];
+            }
+        }
+
+        for (const MatchingEdge& matching_edge : matching_edges) {
+            if (graph[matching_edge.from][matching_edge.index].capacity == 0) {
+                answer[matching_edge.left] =
+                    static_cast<int32_t>(matching_edge.right);
+            }
+        }
+        return answer;
+    }
 
     vector<int32_t> solve() const {
         vector<int32_t> answer(left_count, -1);
@@ -38,6 +201,22 @@ struct BipartiteMatcher::Impl {
             answer[best_edge->left] =
                 static_cast<int32_t>(best_edge->right);
             return answer;
+        }
+
+        vector<Edge> positive_edges;
+        positive_edges.reserve(edges.size());
+        for (const Edge& edge : edges) {
+            if (edge.weight > 0) {
+                positive_edges.push_back(edge);
+            }
+        }
+        const uint64_t matrix_size =
+            static_cast<uint64_t>(left_count) * right_count;
+        // Sparse min-cost flow avoids scanning absent edges. Keep the dense
+        // Hungarian path for the smaller dense test points.
+        if (positive_edges.size() <= 100000 &&
+            matrix_size > static_cast<uint64_t>(positive_edges.size()) * 4) {
+            return solveSparse(positive_edges);
         }
         // 左点不匹配
         const uint32_t row_count = left_count;
